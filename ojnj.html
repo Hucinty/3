@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Manga Collage Converter — Image to Noir Collage</title>
+<style>
+  :root{
+    --ui-bg:#0f0f11;
+    --panel:#111214;
+    --accent:#c85a4e;
+    --muted:#bdb9b0;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:var(--ui-bg);color:#eee;font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial;}
+  .wrap{display:flex;gap:16px;padding:16px;height:100%;}
+  .left{width:360px;min-width:280px;background:var(--panel);padding:14px;border-radius:12px;overflow:auto;}
+  .left h1{font-size:18px;margin:4px 0 12px}
+  label{display:block;margin:8px 0;font-size:13px;color:var(--muted)}
+  input[type=file]{width:100%}
+  .row{display:flex;gap:8px;align-items:center}
+  .control{display:flex;gap:8px;align-items:center;margin:8px 0}
+  input[type=range]{width:100%}
+  button{background:var(--accent);border:0;padding:8px 10px;border-radius:8px;color:white;cursor:pointer}
+  .right{flex:1;display:flex;align-items:center;justify-content:center;position:relative}
+  #previewWrap{width:360px;height:780px;box-shadow:0 12px 30px rgba(0,0,0,0.7);border-radius:16px;overflow:hidden;background:#f6f1e8;display:flex;align-items:center;justify-content:center}
+  canvas{display:block;max-width:100%;height:auto}
+  .small{font-size:12px;color:var(--muted)}
+  footer{position:fixed;left:16px;bottom:16px;color:var(--muted);font-size:12px}
+  .download{margin-top:10px}
+  .hint{color:var(--muted);font-size:12px;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="left">
+    <h1>Manga / Noir Collage Converter</h1>
+
+    <label>Upload Source Image</label>
+    <input id="file" type="file" accept="image/*">
+
+    <label class="small">Preset</label>
+    <div class="row">
+      <select id="preset" style="flex:1;padding:8px;border-radius:8px;border:1px solid #222;background:#0c0c0d;color:#eee">
+        <option value="noir">Noir High Contrast</option>
+        <option value="halftone">Halftone Manga</option>
+        <option value="sepia">Sepia Collage</option>
+        <option value="pop">Duotone Red Accent</option>
+      </select>
+      <button id="applyPreset">Apply</button>
+    </div>
+
+    <div class="control">
+      <label class="small" style="width:90px">Contrast</label>
+      <input id="contrast" type="range" min="0" max="3" step="0.01" value="1.6">
+      <div class="small" id="contrastVal">1.60</div>
+    </div>
+
+    <div class="control">
+      <label class="small" style="width:90px">Posterize</label>
+      <input id="posterize" type="range" min="2" max="8" step="1" value="3">
+      <div class="small" id="posterVal">3</div>
+    </div>
+
+    <div class="control">
+      <label class="small" style="width:90px">Halftone Size</label>
+      <input id="halftone" type="range" min="2" max="18" step="1" value="6">
+      <div class="small" id="halfVal">6</div>
+    </div>
+
+    <div class="control">
+      <label class="small" style="width:90px">Grain</label>
+      <input id="grain" type="range" min="0" max="1" step="0.01" value="0.18">
+      <div class="small" id="grainVal">0.18</div>
+    </div>
+
+    <div class="control">
+      <label class="small" style="width:90px">Newspaper Blend</label>
+      <input id="paperBlend" type="range" min="0" max="1" step="0.01" value="0.85">
+      <div class="small" id="paperVal">0.85</div>
+    </div>
+
+    <div class="control">
+      <label class="small" style="width:90px">Red Accent</label>
+      <input id="red" type="range" min="0" max="1" step="0.01" value="0.05">
+      <div class="small" id="redVal">0.05</div>
+    </div>
+
+    <div style="margin-top:10px">
+      <button id="render">Render</button>
+      <button id="randomize">Random Collage</button>
+      <div class="download">
+        <button id="save">Download PNG</button>
+      </div>
+      <div class="hint">Tip: Use vertical images (portrait) for phone-like wallpaper results.</div>
+    </div>
+
+    <hr style="border:none;height:1px;background:#111;margin:14px 0">
+
+    <div>
+      <div class="small" style="margin-bottom:6px">How it works (short):</div>
+      <ul style="color:var(--muted);font-size:13px;padding-left:18px">
+        <li>Posterize + high contrast to emulate ink outlines</li>
+        <li>Halftone dots generated on luminance for manga shading</li>
+        <li>Procedural newspaper collage tiles with rotated text blocks</li>
+        <li>Noise, stains and ink-splat overlays for vintage feel</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="right">
+    <div id="previewWrap">
+      <canvas id="out" width="720" height="1560"></canvas>
+    </div>
+  </div>
+</div>
+
+<footer>Built for stylized manga/noir conversion • Save result then crop as wallpaper if needed</footer>
+
+<script>
+/*
+Manga Collage converter
+- Upload an image -> apply posterize/contrast -> halftone -> overlay newspaper collage + stains.
+- All procedural; no external resources required.
+*/
+const fileEl = document.getElementById('file');
+const canvas = document.getElementById('out');
+const ctx = canvas.getContext('2d',{willReadFrequently:true});
+const contrastEl = document.getElementById('contrast');
+const posterizeEl = document.getElementById('posterize');
+const halftoneEl = document.getElementById('halftone');
+const grainEl = document.getElementById('grain');
+const paperBlendEl = document.getElementById('paperBlend');
+const redEl = document.getElementById('red');
+
+const contrastVal = document.getElementById('contrastVal');
+const posterVal = document.getElementById('posterVal');
+const halfVal = document.getElementById('halfVal');
+const grainVal = document.getElementById('grainVal');
+const paperVal = document.getElementById('paperVal');
+const redVal = document.getElementById('redVal');
+
+const preset = document.getElementById('preset');
+const applyPresetBtn = document.getElementById('applyPreset');
+const renderBtn = document.getElementById('render');
+const saveBtn = document.getElementById('save');
+const randomBtn = document.getElementById('randomize');
+
+let img = new Image();
+let workingImg = null;
+let randomSeeds = {};
+
+// keep UI values synced
+[contrastEl,posterizeEl,halftoneEl,grainEl,paperBlendEl,redEl].forEach(el=>{
+  el.addEventListener('input',()=>{ updateUI(); });
+});
+function updateUI(){
+  contrastVal.textContent = Number(contrastEl.value).toFixed(2);
+  posterVal.textContent = posterizeEl.value;
+  halfVal.textContent = halftoneEl.value;
+  grainVal.textContent = Number(grainEl.value).toFixed(2);
+  paperVal.textContent = Number(paperBlendEl.value).toFixed(2);
+  redVal.textContent = Number(redEl.value).toFixed(2);
+}
+updateUI();
+
+fileEl.addEventListener('change',ev=>{
+  const f = ev.target.files[0];
+  if(!f) return;
+  const url = URL.createObjectURL(f);
+  img = new Image();
+  img.onload = ()=>{
+    URL.revokeObjectURL(url);
+    // Keep tall aspect for phone wallpaper-like effect
+    const targetW = 720;
+    const targetH = 1560;
+    canvas.width = targetW; canvas.height = targetH;
+    render();
+  };
+  img.src = url;
+});
+
+applyPresetBtn.addEventListener('click',()=>{
+  const p = preset.value;
+  if(p==='noir'){ contrastEl.value=1.9; posterizeEl.value=3; halftoneEl.value=3; grainEl.value=0.12; paperBlendEl.value=0.9; redEl.value=0; }
+  if(p==='halftone'){ contrastEl.value=1.5; posterizeEl.value=4; halftoneEl.value=8; grainEl.value=0.22; paperBlendEl.value=0.8; redEl.value=0.02; }
+  if(p==='sepia'){ contrastEl.value=1.35; posterizeEl.value=3; halftoneEl.value=6; grainEl.value=0.18; paperBlendEl.value=0.9; redEl.value=0.18; }
+  if(p==='pop'){ contrastEl.value=1.6; posterizeEl.value=3; halftoneEl.value=5; grainEl.value=0.2; paperBlendEl.value=0.7; redEl.value=0.25; }
+  updateUI();
+  render();
+});
+
+renderBtn.addEventListener('click',render);
+randomBtn.addEventListener('click',()=>{
+  // change a few params randomly for collage variance
+  contrastEl.value = (1.2 + Math.random()*1.0).toFixed(2);
+  posterizeEl.value = Math.floor(2 + Math.random()*5);
+  halftoneEl.value = Math.floor(3 + Math.random()*12);
+  grainEl.value = (0.05 + Math.random()*0.35).toFixed(2);
+  paperBlendEl.value = (0.6 + Math.random()*0.4).toFixed(2);
+  redEl.value = (Math.random()*0.35).toFixed(2);
+  updateUI();
+  // new random seed
+  randomSeeds.seed = Math.random();
+  render();
+});
+
+saveBtn.addEventListener('click',()=>{
+  const link = document.createElement('a');
+  link.download = 'manga_collage.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+});
+
+function render(){
+  if(!img.src) {
+    // placeholder: procedural sample collage
+    ctx.fillStyle='#f2efe7'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    drawNewspaperBackground(ctx,canvas.width,canvas.height);
+    drawSampleCharacterSilhouette(ctx);
+    return;
+  }
+  // draw newspaper background first
+  ctx.fillStyle = '#f2efe7'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  drawNewspaperBackground(ctx,canvas.width,canvas.height);
+
+  // compute transformed source to fit nicely: fill height and center crop horizontally
+  const srcW = img.width, srcH = img.height;
+  const dstH = canvas.height * 0.92;
+  const scale = dstH / srcH;
+  const dstW = srcW * scale;
+  const dx = (canvas.width - dstW)/2;
+  const dy = (canvas.height - dstH)/2;
+
+  // create an offscreen canvas to manipulate pixels
+  const off = document.createElement('canvas');
+  off.width = Math.round(dstW);
+  off.height = Math.round(dstH);
+  const offCtx = off.getContext('2d');
+
+  // draw source
+  offCtx.drawImage(img, 0, 0, off.width, off.height);
+
+  // get image data
+  let id = offCtx.getImageData(0,0,off.width,off.height);
+  let data = id.data;
+
+  // apply contrast & posterize
+  const contrast = Number(contrastEl.value);
+  const posterLevels = Number(posterizeEl.value);
+
+  // luminance + posterize
+  for(let i=0;i<data.length;i+=4){
+    // convert to luminance
+    let r = data[i], g = data[i+1], b = data[i+2];
+    // sRGB luminance
+    let lum = 0.299*r + 0.587*g + 0.114*b;
+    // apply contrast around 128
+    lum = (lum - 128) * contrast + 128;
+    // posterize levels
+    let step = 255/(posterLevels-1);
+    lum = Math.round(lum/step)*step;
+    // clamp
+    lum = Math.max(0, Math.min(255, lum));
+    // write back as grayscale (so outlines are black/white)
+    data[i]=data[i+1]=data[i+2]=lum;
+  }
+  offCtx.putImageData(id,0,0);
+
+  // apply halftone (draw dot pattern based on luminance)
+  const dotSize = Number(halftoneEl.value);
+  const halftoneCanvas = generateHalftone(off, dotSize, Number(grainEl.value));
+  // draw halftone onto main canvas using composite
+  ctx.save();
+  ctx.translate(dx, dy);
+  ctx.globalCompositeOperation = 'source-over';
+  // optionally add a slight red accent mask
+  if(Number(redEl.value) > 0.01){
+    // draw the halftone as base
+    ctx.drawImage(halftoneCanvas,0,0);
+    // create a tinted layer
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = `rgba(200,80,74,${Number(redEl.value)})`; // red accent
+    ctx.fillRect(0,0,off.width,off.height);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(halftoneCanvas,0,0);
+  } else {
+    ctx.drawImage(halftoneCanvas,0,0);
+  }
+  ctx.restore();
+
+  // add ink splatters and paper stains
+  drawInkStains(ctx, canvas.width, canvas.height);
+
+  // blend extra paper texture
+  const paperAlpha = Number(paperBlendEl.value);
+  if(paperAlpha>0){
+    ctx.save();
+    ctx.globalAlpha = paperAlpha;
+    // generate tile and draw full-size
+    const tile = generatePaperTile(420,300);
+    // create pattern
+    const pat = ctx.createPattern(tile,'repeat');
+    ctx.fillStyle = pat;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.restore();
+  }
+}
+
+// ---------- Procedural helpers ----------
+
+function generatePaperTile(w,h){
+  const c = document.createElement('canvas'); c.width=w; c.height=h;
+  const g = c.getContext('2d');
+  // base color
+  g.fillStyle = '#f3efe5';
+  g.fillRect(0,0,w,h);
+  // add subtle paper fiber noise
+  const n = g.getImageData(0,0,w,h);
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const i = (y*w+x)*4;
+      // slightly varied channels for "old" paper
+      const v = 230 + Math.round((Math.random()-0.5)*14);
+      n.data[i]=v; n.data[i+1]=v; n.data[i+2]=v+6; n.data[i+3]=255;
+    }
+  }
+  g.putImageData(n,0,0);
+  // draw faux-typed newspaper text blocks
+  g.fillStyle = 'rgba(30,30,30,0.07)';
+  const fonts = ['12px serif','11px Georgia','10px "Times New Roman"'];
+  for(let i=0;i<10;i++){
+    g.save();
+    const fw = 80 + Math.random()*220;
+    const fh = 20 + Math.random()*80;
+    const x = Math.random()*(w-fw);
+    const y = Math.random()*(h-fh);
+    g.translate(x+fw/2,y+fh/2);
+    g.rotate((Math.random()-0.5)*0.15);
+    g.translate(- (x+fw/2), - (y+fh/2));
+    g.beginPath();
+    g.rect(x,y,fw,fh);
+    g.fill();
+    // scribble text lines
+    g.fillStyle = 'rgba(30,30,30,0.12)';
+    for(let r=0;r<Math.floor(fh/8);r++){
+      g.font = fonts[Math.floor(Math.random()*fonts.length)];
+      const txt = 'lorem ipsum dolor sit amet consectetur ' .substr(0,  20 + Math.floor(Math.random()*40));
+      g.fillText(txt, x + 4 + (Math.random()*8-4), y + 10 + r*8);
+    }
+    g.restore();
+  }
+  // add stains
+  for(let i=0;i<4;i++){
+    g.beginPath();
+    g.fillStyle = 'rgba(150,110,90,0.06)';
+    const rx = Math.random()*w, ry = Math.random()*h, rw = 40 + Math.random()*160, rh = 20 + Math.random()*80;
+    g.ellipse(rx,ry,rw,rh,(Math.random()-0.5)*Math.PI,0,Math.PI*2);
+    g.fill();
+  }
+  return c;
+}
+
+function drawNewspaperBackground(ctx,w,h){
+  // tiles of generated paper
+  const tile = generatePaperTile(420,300);
+  const pat = ctx.createPattern(tile,'repeat');
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-over';
+  ctx.fillStyle = pat;
+  ctx.fillRect(0,0,w,h);
+  // overlay rotated collage rectangles
+  for(let i=0;i<14;i++){
+    ctx.save();
+    const tw = 160 + Math.random()*320;
+    const th = 120 + Math.random()*260;
+    const x = Math.random()*(w - tw);
+    const y = Math.random()*(h - th);
+    const rot = (Math.random()-0.5)*0.6;
+    ctx.translate(x+tw/2,y+th/2); ctx.rotate(rot);
+    ctx.globalAlpha = 0.75 - Math.random()*0.35;
+    ctx.fillStyle = 'rgba(30,30,30,0.03)';
+    ctx.fillRect(-tw/2,-th/2,tw,th);
+    // sometimes draw a portrait box
+    if(Math.random()<0.35){
+      ctx.fillStyle = 'rgba(0,0,0,0.04)';
+      ctx.fillRect(-tw/2 + 10, -th/2 + 10, tw-20, th-20);
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function generateHalftone(srcCanvas, dotSize = 6, grain = 0.12){
+  const w = srcCanvas.width, h = srcCanvas.height;
+  const c = document.createElement('canvas'); c.width=w; c.height=h;
+  const g = c.getContext('2d');
+  const sctx = srcCanvas.getContext('2d');
+  // use the grayscale image already prepared
+  g.fillStyle='#fff'; g.fillRect(0,0,w,h);
+
+  // get pixel data from source
+  const srcData = sctx.getImageData(0,0,w,h).data;
+
+  // halftone: iterate by dotSize blocks
+  for(let y=0;y<h;y+=dotSize){
+    for(let x=0;x<w;x+=dotSize){
+      // compute average luminance in the block
+      let sum=0, count=0;
+      for(let yy=0; yy<dotSize && y+yy<h; yy++){
+        for(let xx=0; xx<dotSize && x+xx<w; xx++){
+          const i = ((y+yy)*w + (x+xx))*4;
+          sum += srcData[i]; count++;
+        }
+      }
+      const avg = sum/count; // 0-255 where 0 is black
+      // map luminance to radius (darker -> bigger dot)
+      const rNorm = 1 - avg/255; // 0..1 (0 for white)
+      const maxR = dotSize * 0.9;
+      const radius = Math.max(0.4, rNorm * maxR);
+      // draw dot with slight jitter
+      const jitter = (Math.random()-0.5) * dotSize*0.15;
+      g.beginPath();
+      g.fillStyle = '#0b0b0b';
+      g.arc(x + dotSize/2 + jitter, y + dotSize/2 + jitter, radius, 0, Math.PI*2);
+      g.fill();
+    }
+  }
+
+  // overlay paper grain/noise
+  const noise = g.getImageData(0,0,w,h);
+  for(let i=0;i<noise.data.length;i+=4){
+    const v = (Math.random()-0.5)*255*grain;
+    noise.data[i] = Math.max(0, Math.min(255, noise.data[i] + v));
+    noise.data[i+1] = Math.max(0, Math.min(255, noise.data[i+1] + v));
+    noise.data[i+2] = Math.max(0, Math.min(255, noise.data[i+2] + v));
+  }
+  g.putImageData(noise,0,0);
+
+  // apply subtle edge ink by drawing a blurred negative mask to darken outlines (optional)
+  return c;
+}
+
+function drawInkStains(ctx,w,h){
+  // random black brush marks, splatters
+  ctx.save();
+  for(let i=0;i<5;i++){
+    ctx.globalAlpha = 0.04 + Math.random()*0.12;
+    ctx.beginPath();
+    const x = Math.random()*w, y = Math.random()*h, r = 30 + Math.random()*260;
+    const spikes = 6 + Math.floor(Math.random()*12);
+    for(let a=0;a<spikes;a++){
+      const ang = a/spikes*Math.PI*2;
+      const rad = r * (0.4 + Math.random()*1.2);
+      const px = x + Math.cos(ang)*rad;
+      const py = y + Math.sin(ang)*rad;
+      if(a===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.closePath();
+    ctx.fillStyle = '#000';
+    ctx.fill();
+  }
+  // brush strokes
+  for(let i=0;i<6;i++){
+    ctx.globalAlpha = 0.06 + Math.random()*0.2;
+    ctx.save();
+    ctx.translate(Math.random()*w, Math.random()*h);
+    ctx.rotate((Math.random()-0.5)*Math.PI);
+    const bx = -200, by= -20 + Math.random()*40;
+    ctx.fillStyle = '#000';
+    roundRect(ctx, bx, by, 520 + Math.random()*300, 40 + Math.random()*80, 20, true);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function roundRect(ctx, x, y, width, height, radius, fill) {
+  if (typeof radius === 'undefined') radius = 5;
+  if (typeof radius === 'number') radius = {tl: radius, tr: radius, br: radius, bl: radius};
+  ctx.beginPath();
+  ctx.moveTo(x + radius.tl, y);
+  ctx.lineTo(x + width - radius.tr, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius.tr);
+  ctx.lineTo(x + width, y + height - radius.br);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius.br, y + height);
+  ctx.lineTo(x + radius.bl, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius.bl);
+  ctx.lineTo(x, y + radius.tl);
+  ctx.quadraticCurveTo(x, y, x + radius.tl, y);
+  ctx.closePath();
+  if (fill) ctx.fill();
+}
+
+function drawSampleCharacterSilhouette(ctx){
+  // draw a generic silhouette for placeholder when no image loaded
+  const w = canvas.width, h = canvas.height;
+  ctx.save();
+  ctx.translate(w/2, h/2 - 40);
+  ctx.scale(1.0,1.0);
+  ctx.fillStyle='#0b0b0b';
+  // head
+  ctx.beginPath();
+  ctx.ellipse(-40, -280, 120, 140, 0, 0, Math.PI*2);
+  ctx.fill();
+  // body block
+  ctx.fillRect(-220, -140, 360, 340);
+  ctx.restore();
+  // halftone & stains
+  drawInkStains(ctx,w,h);
+}
+
+// initial render
+render();
+</script>
+</body>
+</html>

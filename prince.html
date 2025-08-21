@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Live Visual Effects Lab — Merged</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <style>
+        /* Base from hjkl.html with a few additions to accommodate more controls */
+        :root{--bg:#0c0c0d;--panel:#121214;--muted:#d6d6d6;--accent:#4fb3ff;--border:#222}
+        *{box-sizing:border-box}
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: #181313;
+            background-image: linear-gradient(310deg ,#093240 10%, #b1d1b1 30%, #b955a0 200%);  
+            color: #d4d4d4;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        main {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: flex-start;
+            width:100%;
+            max-width:1280px;
+        }
+        canvas {
+            background-color: rgb(202, 169, 169);
+            border: 2px solid #444;
+            border-radius: 8px;
+            max-width: 100%;
+            height: auto;
+            position: relative;
+            display:block;
+        }
+        .video-container{flex:1; min-width:320px; display:flex; flex-direction:column; align-items:center;}
+        .controls-panel {
+            background-color: #746565;
+            padding: 20px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            width: 320px;
+            position: relative;
+            max-height: 80vh;
+            overflow:auto;
+        }
+        .effect-group {
+            border: 1px solid #444;
+            padding: 12px;
+            border-radius: 6px;
+            background: rgba(0,0,0,0.06);
+        }
+        .effect-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        label, .effect-header h3 { margin: 0; }
+        h1, h3 { margin-top: 0; }
+        input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
+        button {
+            padding: 10px 15px;
+            font-size: 0.9em;
+            cursor: pointer;
+            border-radius: 5px;
+            border: none;
+            background-color: #007acc;
+            color: white;
+            transition: background-color 0.2s;
+        }
+        button:hover { background-color: #0099e6; }
+        button:disabled { background-color: #555; cursor: not-allowed; }
+        .record-controls {
+            margin-top: 12px; display: flex; gap: 10px; justify-content: center; flex-wrap:wrap;
+        }
+        #downloadButton { background-color: #28a745; }
+        #downloadButton:hover { background-color: #2ebf4d; }
+        .hidden { display: none; }
+        .small{font-size:0.9em}
+        .row{display:flex; gap:8px; align-items:center; justify-content:space-between}
+        .muted{color:#bfbfbf; font-size:0.9em}
+        .control-inline{display:flex; gap:8px; align-items:center;}
+        .footer{margin-top:12px;color:#bbb;font-size:0.9em}
+    </style>
+</head>
+<body>
+    <h1>Live Visual Effects Lab</h1>
+
+    <main>
+        <div class="video-container">
+            <video id="video" playsinline class="hidden"></video>
+            <canvas id="canvas"></canvas>
+            <div class="record-controls">
+                <button id="startButton">Start Webcam</button>
+                <button id="recordButton" disabled>Start Recording</button>
+                <button id="stopButton" disabled>Stop Recording</button>
+                <button id="downloadButton" class="hidden">Download Video</button>
+            </div>
+
+            <div style="width:100%; margin-top:12px; display:flex; gap:8px; justify-content:center;">
+                <button id="uploadBtn" class="ghost">Upload</button>
+                <input id="fileInput" type="file" accept="image/*,video/*" style="display:none">
+                <select id="sampleSelect" class="ghost" style="display:none">
+                  <option value="">-- Samples --</option>
+                </select>
+            </div>
+
+            <div style="margin-top:8px; text-align:center;" class="muted">Tip: Toggle effects, then start webcam / upload an image/video.</div>
+        </div>
+
+        <div class="controls-panel">
+            <!-- Existing hjkl effects + added controls -->
+
+            <!-- Dithering Effect -->
+            <div class="effect-group">
+                <div class="effect-header">
+                    <input type="checkbox" id="ditherEnable">
+                    <h3>Dithering</h3>
+                </div>
+                <label for="ditherAlgorithm">Algorithm:</label>
+                <select id="ditherAlgorithm">
+                    <option value="bayer">Ordered (Bayer)</option>
+                    <option value="floyd">Error Diffusion</option>
+                    <option value="rough">Rough</option>
+                </select><br><br>
+                <label for="ditherLevels">Levels: <span id="levelsValue">4</span></label>
+                <input type="range" id="ditherLevels" min="1" max="16" value="4" style="width: 100%;">
+            </div>
+
+            <!-- Stippling -->
+            <div class="effect-group">
+                <div class="effect-header">
+                    <input type="checkbox" id="stippling">
+                    <h3>Stippling</h3>
+                </div>
+                <label for="stippling_step">Step: <span id="stipplingValue">4</span></label>
+                <input type="range" id="stippling_step" min="2" max="16" value="4" style="width:100%">
+                <label class="muted">Density/strength auto-scaled by quality mode</label>
+            </div>
+
+            <!-- Dots -->
+            <div class="effect-group">
+                <div class="effect-header">
+                    <input type="checkbox" id="dots">
+                    <h3>Dots</h3>
+                </div>
+                <label>Size: <span id="dotsValue">8</span></label>
+                <input type="range" id="dots_size" min="2" max="32" value="8" style="width:100%">
+                <label>Spacing: <span id="dotsSpace">8</span></label>
+                <input type="range" id="dots_spacing" min="2" max="48" value="8" style="width:100%">
+            </div>
+
+            <!-- Patterns -->
+            <div class="effect-group">
+                <div class="effect-header">
+                    <input type="checkbox" id="patterns">
+                    <h3>Patterns</h3>
+                </div>
+                <label>Tile size: <span id="patternsValue">20</span></label>
+                <input id="patterns_tile" type="range" min="4" max="120" value="20" style="width:100%">
+            </div>
+
+            <!-- CRT Monitor -->
+            <div class="effect-group">
+                <div class="effect-header">
+                    <input type="checkbox" id="crtEnable">
+                    <h3>CRT Monitor</h3>
+                </div>
+                <label for="scanlineOpacity">Scanlines: <span id="scanlineValue">0.2</span></label>
+                <input type="range" id="scanlineOpacity" min="0" max="1" step="0.01" value="0.18" style="width: 100%;">
+                <label for="stipplingThreshold">Stippling Threshold: <span id="stipplingThresholdValue">50</span></label>
+                <input type="range" id="stipplingThreshold" min="10" max="150" value="50" style="width:100%">
+            </div>
+
+            <!-- Edge Detection -->
+            <div class="effect-group">
+                <div class="effect-header">
+                    <input type="checkbox" id="edgeEnable">
+                    <h3>Edge Detection</h3>
+                </div>
+                <label for="edgeThreshold">Threshold: <span id="edgeValue">50</span></label>
+                <input type="range" id="edgeThreshold" min="10" max="150" value="50" style="width: 100%;">
+            </div>
+
+            <!-- Distort / Displace -->
+            <div class="effect-group">
+                <div class="effect-header">
+                    <input type="checkbox" id="distortEnable">
+                    <h3>Distort / Displace</h3>
+                </div>
+                <label for="distortAmount">Amount: <span id="distortValue">5</span></label>
+                <input type="range" id="distortAmount" min="1" max="60" value="6" style="width: 100%;">
+                <label for="distortFreq">Frequency: <span id="distortFreqValue">20</span></label>
+                <input type="range" id="distortFreq" min="2" max="60" value="20" style="width:100%">
+            </div>
+
+            <!-- Recolor / Gradient -->
+            <div class="effect-group">
+                <div class="effect-header">
+                    <input type="checkbox" id="recolorEnable">
+                    <h3>Recolor / Gradient</h3>
+                </div>
+                <label for="colorStart">Start:</label> <input type="color" id="colorStart" value="#000000"><br>
+                <label for="colorEnd">End:</label> <input type="color" id="colorEnd" value="#FFFFFF">
+                <label for="recolorMix">Mix: <span id="recolorMixVal">1</span></label>
+                <input type="range" id="recolorMix" min="0" max="1" step="0.01" value="1" style="width:100%">
+            </div>
+
+            <!-- Bevel -->
+            <div class="effect-group">
+                <div class="effect-header">
+                    <input type="checkbox" id="bevel">
+                    <h3>Bevel</h3>
+                </div>
+                <label for="bevelDepth">Depth: <span id="bevelVal">24</span></label>
+                <input type="range" id="bevelDepth" min="1" max="64" value="24" style="width:100%">
+            </div>
+
+            <!-- Scatter -->
+            <div class="effect-group">
+                <div class="effect-header">
+                    <input type="checkbox" id="scatter">
+                    <h3>Scatter</h3>
+                </div>
+                <label>Amount: <span id="scatterVal">6</span></label>
+                <input type="range" id="scatter_amount" min="0" max="32" value="6" style="width:100%">
+                <label>Chance: <span id="scatterChanceVal">0.01</span></label>
+                <input type="range" id="scatter_chance" min="0.001" max="0.1" step="0.001" value="0.01" style="width:100%">
+            </div>
+
+            <!-- Cellular -->
+            <div class="effect-group">
+                <div class="effect-header">
+                    <input type="checkbox" id="cellular">
+                    <h3>Cellular (CA)</h3>
+                </div>
+                <label>Scale: <span id="cellularVal">12</span></label>
+                <input type="range" id="cellular_scale" min="6" max="64" value="12" style="width:100%">
+                <label>Speed: <span id="cellularSpeedVal">1.0</span></label>
+                <input type="range" id="cellular_speed" min="0.1" max="3" step="0.1" value="1" style="width:100%">
+            </div>
+
+            <!-- Global / Quality -->
+            <div class="effect-group">
+                <div class="effect-header">
+                    <h3>Global</h3>
+                </div>
+                <label>Canvas Size <span id="sizeLabel">640</span>
+                  <input type="range" id="canvasSize" min="200" max="1280" value="640" style="width:100%">
+                </label>
+                <label>Quality Mode
+                  <select id="qualityMode" style="width:100%"><option value="high">High</option><option value="balanced" selected>Balanced</option><option value="low">Low</option></select>
+                </label>
+                <div class="row" style="margin-top:8px;">
+                  <div class="toggle"><input type="checkbox" id="perfMode"><label for="perfMode">Performance Mode (auto)</label></div>
+                </div>
+            </div>
+
+            <!-- Colors & Levels -->
+            <div class="effect-group">
+                <div class="effect-header">
+                    <h3>Colors & Levels</h3>
+                </div>
+                <label>Gamma <input type="range" id="gamma" min="0.5" max="2.5" step="0.1" value="1" style="width:100%"></label>
+                <label>Black Point <input type="range" id="blackPoint" min="0" max="255" value="0" style="width:100%"></label>
+                <label>White Point <input type="range" id="whitePoint" min="0" max="255" value="255" style="width:100%"></label>
+            </div>
+
+            <div class="footer">Merged hjkl + index effects — PWA-ready friendly</div>
+        </div>
+    </main>
+
+    <script>
+    /* Merged JS:
+       - Keep original hjkl behavior and add effects from index.
+       - Function names from hjkl (apply*) remain; index versions are effect*.
+       - The main render loop will call both sets depending on toggles.
+    */
+
+    // --- DOM Elements ---
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', {alpha:false});
+    const startButton = document.getElementById('startButton');
+    const recordButton = document.getElementById('recordButton');
+    const stopButton = document.getElementById('stopButton');
+    const downloadButton = document.getElementById('downloadButton');
+
+    // file/upload UI
+    const uploadBtn = document.getElementById('uploadBtn'), fileInput = document.getElementById('fileInput'), sampleSelect = document.getElementById('sampleSelect');
+
+    // hjkl effect controls (existing)
+    const ditherEnable = document.getElementById('ditherEnable');
+    const ditherAlgorithm = document.getElementById('ditherAlgorithm');
+    const ditherLevels = document.getElementById('ditherLevels');
+
+    const crtEnable = document.getElementById('crtEnable');
+    const scanlineOpacity = document.getElementById('scanlineOpacity');
+
+    const edgeEnable = document.getElementById('edgeEnable');
+    const edgeThreshold = document.getElementById('edgeThreshold');
+
+    const distortEnable = document.getElementById('distortEnable');
+    const distortAmount = document.getElementById('distortAmount');
+    const distortFreq = document.getElementById('distortFreq');
+
+    const recolorEnable = document.getElementById('recolorEnable');
+    const colorStart = document.getElementById('colorStart');
+    const colorEnd = document.getElementById('colorEnd');
+    const recolorMix = document.getElementById('recolorMix');
+
+    // New/index controls
+    const stipplingToggle = document.getElementById('stippling');
+    const stippling_step = document.getElementById('stippling_step');
+    const dotsToggle = document.getElementById('dots');
+    const dots_size = document.getElementById('dots_size');
+    const dots_spacing = document.getElementById('dots_spacing');
+    const patternsToggle = document.getElementById('patterns');
+    const patterns_tile = document.getElementById('patterns_tile');
+    const bevelToggle = document.getElementById('bevel');
+    const bevelDepth = document.getElementById('bevelDepth');
+    const scatterToggle = document.getElementById('scatter');
+    const scatter_amount = document.getElementById('scatter_amount');
+    const scatter_chance = document.getElementById('scatter_chance');
+    const cellularToggle = document.getElementById('cellular');
+    const cellular_scale = document.getElementById('cellular_scale');
+    const cellular_speed = document.getElementById('cellular_speed');
+
+    // Global controls
+    const canvasSize = document.getElementById('canvasSize');
+    const sizeLabel = document.getElementById('sizeLabel');
+    const qualityMode = document.getElementById('qualityMode');
+    const perfMode = document.getElementById('perfMode');
+    const gammaIn = document.getElementById('gamma');
+    const blackIn = document.getElementById('blackPoint');
+    const whiteIn = document.getElementById('whitePoint');
+
+    // small UI bindings for labels
+    document.getElementById('levelsValue').textContent = ditherLevels.value;
+    ditherLevels.oninput = ()=> document.getElementById('levelsValue').textContent = ditherLevels.value;
+
+    document.getElementById('scanlineValue').textContent = scanlineOpacity.value;
+    scanlineOpacity.oninput = ()=> document.getElementById('scanlineValue').textContent = scanlineOpacity.value;
+
+    document.getElementById('edgeValue').textContent = edgeThreshold.value;
+    edgeThreshold.oninput = ()=> document.getElementById('edgeValue').textContent = edgeThreshold.value;
+
+    document.getElementById('distortValue').textContent = distortAmount.value;
+    distortAmount.oninput = ()=> document.getElementById('distortValue').textContent = distortAmount.value;
+    document.getElementById('distortFreqValue').textContent = distortFreq.value;
+    distortFreq.oninput = ()=> document.getElementById('distortFreqValue').textContent = distortFreq.value;
+
+    document.getElementById('stipplingValue').textContent = stippling_step.value;
+    stippling_step.oninput = ()=> document.getElementById('stipplingValue').textContent = stippling_step.value;
+    document.getElementById('stipplingThresholdValue').textContent = document.getElementById('stipplingThreshold') ? document.getElementById('stipplingThreshold').value : 50;
+
+    document.getElementById('dotsValue').textContent = dots_size.value;
+    dots_size.oninput = ()=> document.getElementById('dotsValue').textContent = dots_size.value;
+    document.getElementById('dotsSpace').textContent = dots_spacing.value;
+    dots_spacing.oninput = ()=> document.getElementById('dotsSpace').textContent = dots_spacing.value;
+
+    document.getElementById('patternsValue').textContent = patterns_tile.value;
+    patterns_tile.oninput = ()=> document.getElementById('patternsValue').textContent = patterns_tile.value;
+
+    document.getElementById('bevelVal').textContent = bevelDepth.value;
+    bevelDepth.oninput = ()=> document.getElementById('bevelVal').textContent = bevelDepth.value;
+
+    document.getElementById('scatterVal').textContent = scatter_amount.value;
+    scatter_amount.oninput = ()=> document.getElementById('scatterVal').textContent = scatter_amount.value;
+    document.getElementById('scatterChanceVal').textContent = scatter_chance.value;
+    scatter_chance.oninput = ()=> document.getElementById('scatterChanceVal').textContent = scatter_chance.value;
+
+    document.getElementById('cellularVal').textContent = cellular_scale.value;
+    cellular_scale.oninput = ()=> document.getElementById('cellularVal').textContent = cellular_scale.value;
+    document.getElementById('cellularSpeedVal').textContent = cellular_speed.value;
+    cellular_speed.oninput = ()=> document.getElementById('cellularSpeedVal').textContent = cellular_speed.value;
+
+    document.getElementById('bevelVal').textContent = bevelDepth.value;
+
+    document.getElementById('recolorMixVal').textContent = recolorMix.value;
+    recolorMix.oninput = ()=> document.getElementById('recolorMixVal').textContent = recolorMix.value;
+
+    // --- State ---
+    let mediaRecorder, recordedChunks = [], isRecording = false, animationFrameId;
+    let time = 0; // For distortion effect
+
+    // --- Dithering Data (hjkl) ---
+    const bayerMatrix = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+    const matrixSize = 4;
+
+    // --- Canvas / offscreen from index approach to allow static render/resize ---
+    const off = document.createElement('canvas');
+    const offCtx = off.getContext('2d');
+    function setSize(w,h){ canvas.width=w; canvas.height=h; off.width=w; off.height=h; }
+    // initialize with current slider value
+    setSize(Number(canvasSize.value), Math.round(Number(canvasSize.value) * 3/4));
+    sizeLabel.textContent = canvasSize.value;
+
+    // --- Utility ---
+    function hexToRgb(hex) {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : null;
+    }
+    function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+    function hexToRgbArr(h){ const v=h.replace('#',''); return [parseInt(v.slice(0,2),16),parseInt(v.slice(2,4),16),parseInt(v.slice(4,6),16)]; }
+
+    // --- Camera / media setup (based on hjkl + index) ---
+    async function setupCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+            await video.play();
+
+            setSize(video.videoWidth, video.videoHeight);
+            canvasSize.value = video.videoWidth;
+            sizeLabel.textContent = canvasSize.value;
+
+            startButton.classList.add('hidden');
+            recordButton.disabled = false;
+
+            // start loop
+            requestAnimationFrame(loop);
+        } catch (err) {
+            alert("Could not access webcam. Please grant permission.");
+            console.error(err);
+        }
+    }
+
+    // upload handling
+    uploadBtn.addEventListener('click', ()=> fileInput.click());
+    fileInput.addEventListener('change', (e)=>{
+        const f = e.target.files && e.target.files[0]; if(!f) return;
+        const url = URL.createObjectURL(f);
+        if(f.type.startsWith('image/')){
+            const img = new Image();
+            img.onload = ()=>{ setSize(img.width, img.height); offCtx.drawImage(img,0,0,off.width,off.height); renderStatic(); URL.revokeObjectURL(url); };
+            img.src = url;
+        } else if(f.type.startsWith('video/')){
+            video.srcObject = null;
+            video.src = url; video.loop = true; video.play();
+            requestAnimationFrame(loop);
+        } else alert('Unsupported file');
+    });
+
+    // canvas size slider
+    canvasSize.oninput = ()=>{
+        const s = Number(canvasSize.value);
+        sizeLabel.textContent = s;
+        setSize(s, Math.round(s * 3/4));
+        // preserve the frame on offscreen and copy to visible
+        renderStatic();
+    };
+
+    // --- hjkl effect impl (kept) ---
+    function applyDistort(imageData, time) {
+        const data = imageData.data;
+        const width = imageData.width;
+        const originalData = new Uint8ClampedArray(data);
+        const amount = parseInt(distortAmount.value);
+
+        for (let y = 0; y < imageData.height; y++) {
+            for (let x = 0; x < width; x++) {
+                const offsetY = Math.sin(y / 20 + time) * amount;
+                const offsetX = Math.sin(x / 20 + time) * amount;
+                
+                const srcX = Math.max(0, Math.min(width - 1, x + offsetX));
+                const srcY = Math.max(0, Math.min(imageData.height - 1, y + offsetY));
+
+                const srcIndex = (Math.floor(srcY) * width + Math.floor(srcX)) * 4;
+                const dstIndex = (y * width + x) * 4;
+
+                data[dstIndex] = originalData[srcIndex];
+                data[dstIndex + 1] = originalData[srcIndex + 1];
+                data[dstIndex + 2] = originalData[srcIndex + 2];
+            }
+        }
+    }
+
+    function applyEdgeDetection(imageData) {
+        const data = imageData.data;
+        const width = imageData.width;
+        const height = imageData.height;
+        const threshold = parseInt(edgeThreshold.value);
+        const gray = new Uint8ClampedArray(width * height);
+
+        for(let i=0; i < data.length; i+=4) {
+            gray[i/4] = (data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114);
+        }
+
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                const i = y * width + x;
+                const gx = -gray[i - 1 - width] - 2 * gray[i - 1] - gray[i - 1 + width] +
+                            gray[i + 1 - width] + 2 * gray[i + 1] + gray[i + 1 + width];
+                const gy = -gray[i - 1 - width] - 2 * gray[i - width] - gray[i + 1 - width] +
+                            gray[i - 1 + width] + 2 * gray[i + width] + gray[i + 1 + width];
+                const magnitude = Math.sqrt(gx * gx + gy * gy);
+                const color = magnitude > threshold ? 255 : 0;
+                const idx = i * 4;
+                data[idx] = data[idx+1] = data[idx+2] = color;
+            }
+        }
+    }
+
+    function applyRecolor(imageData) {
+        const data = imageData.data;
+        const start = hexToRgb(colorStart.value);
+        const end = hexToRgb(colorEnd.value);
+        const mix = parseFloat(recolorMix.value);
+
+        for (let i = 0; i < data.length; i += 4) {
+            const gray = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) / 255;
+            const r = start.r + (end.r - start.r) * gray;
+            const g = start.g + (end.g - start.g) * gray;
+            const b = start.b + (end.b - start.b) * gray;
+            data[i] = data[i] * (1-mix) + r * mix;
+            data[i+1] = data[i+1] * (1-mix) + g * mix;
+            data[i+2] = data[i+2] * (1-mix) + b * mix;
+        }
+    }
+
+    function applyCRTEffect(imageData) {
+        const data = imageData.data;
+        const opacity = parseFloat(scanlineOpacity.value);
+        for (let y = 0; y < imageData.height; y += 2) {
+            for (let x = 0; x < imageData.width; x++) {
+                const i = (y * imageData.width + x) * 4;
+                data[i] *= (1 - opacity);
+                data[i+1] *= (1 - opacity);
+                data[i+2] *= (1 - opacity);
+            }
+        }
+    }
+
+    function applyBayerDither(imageData) {
+        const data = imageData.data;
+        const levels = Math.max(2, parseInt(ditherLevels.value));
+        const step = 255 / (levels - 1);
+
+        for (let i = 0; i < data.length; i += 4) {
+            const x = (i / 4) % canvas.width;
+            const y = Math.floor((i / 4) / canvas.width);
+            const gray = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+            const threshold = bayerMatrix[y % matrixSize][x % matrixSize];
+            const finalColor = Math.round((gray + threshold * (255 / (matrixSize*matrixSize))) / step) * step;
+            data[i] = data[i + 1] = data[i + 2] = finalColor;
+        }
+    }
+
+    function applyFloydSteinbergDither(imageData) {
+        const width = imageData.width;
+        const height = imageData.height;
+        const data = imageData.data;
+        const grayData = new Float32Array(width * height);
+        
+        for (let i = 0; i < data.length; i += 4) {
+            grayData[i / 4] = (data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114);
+        }
+        
+        const levels = Math.max(2, parseInt(ditherLevels.value));
+        const step = 255 / (levels - 1);
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const i = y * width + x;
+                const oldPixel = grayData[i];
+                const newPixel = Math.round(oldPixel / step) * step;
+                grayData[i] = newPixel;
+                const quantError = oldPixel - newPixel;
+                if (x + 1 < width) grayData[i + 1] += quantError * 7 / 16;
+                if (x - 1 > 0 && y + 1 < height) grayData[i - 1 + width] += quantError * 3 / 16;
+                if (y + 1 < height) grayData[i + width] += quantError * 5 / 16;
+                if (x + 1 < width && y + 1 < height) grayData[i + 1 + width] += quantError * 1 / 16;
+            }
+        }
+        for (let i = 0; i < grayData.length; i++) {
+            data[i * 4] = data[i * 4 + 1] = data[i * 4 + 2] = grayData[i];
+        }
+    }
+
+    function applyStippling(imageData) {
+        const data = imageData.data;
+        const threshold = parseInt(document.getElementById('stipplingThreshold') ? document.getElementById('stipplingThreshold').value : 50);
+        for (let i = 0; i < data.length; i += 4) {
+            const gray = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+            const dithered = gray < threshold ? 0 : 255;
+            data[i] = data[i + 1] = data[i + 2] = dithered;
+        }
+    }
+
+    // --- index-style effect implementations (renamed to avoid conflict) ---
+    const bayer4 = [0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5];
+
+    function effectEdge(imageData, threshold){
+      const w=imageData.width,h=imageData.height,data=imageData.data;
+      const gray = new Float32Array(w*h);
+      for(let i=0,j=0;i<data.length;i+=4,j++) gray[j] = 0.299*data[i]+0.587*data[i+1]+0.114*data[i+2];
+      for(let y=1;y<h-1;y++){
+        for(let x=1;x<w-1;x++){
+          const i = y*w+x;
+          const gx = -gray[i-w-1] - 2*gray[i-1] - gray[i+w-1] + gray[i-w+1] + 2*gray[i+1] + gray[i+w+1];
+          const gy = -gray[i-w-1] - 2*gray[i-w] - gray[i-w+1] + gray[i+w-1] + 2*gray[i+w] + gray[i+w+1];
+          const mag = Math.sqrt(gx*gx+gy*gy);
+          const c = mag>threshold?255:0;
+          const idx = i*4; data[idx]=data[idx+1]=data[idx+2]=c;
+        }
+      }
+    }
+
+    function effectDistort(imageData, t, amount, freq){
+      const w=imageData.width,h=imageData.height,data=imageData.data;
+      const copy = new Uint8ClampedArray(data);
+      for(let y=0;y<h;y++){
+        for(let x=0;x<w;x++){
+          const dx = Math.sin((y/freq)+t)*amount;
+          const dy = Math.sin((x/freq)+t)*amount;
+          const sx = clamp(Math.floor(x+dx),0,w-1), sy = clamp(Math.floor(y+dy),0,h-1);
+          const sidx=(sy*w+sx)*4, didx=(y*w+x)*4;
+          data[didx]=copy[sidx]; data[didx+1]=copy[sidx+1]; data[didx+2]=copy[sidx+2];
+        }
+      }
+    }
+
+    function effectDither(imageData, levels){
+      const w=imageData.width,h=imageData.height,data=imageData.data;
+      const step = 255/(levels-1);
+      for(let y=0;y<h;y++){
+        for(let x=0;x<w;x++){
+          const i=(y*w+x)*4;
+          const g = 0.299*data[i]+0.587*data[i+1]+0.114*data[i+2];
+          const t = bayer4[(y%4)*4 + (x%4)];
+          const v = Math.round((g + t*(255/16))/step)*step;
+          data[i]=data[i+1]=data[i+2]=v;
+        }
+      }
+    }
+
+    function effectRecolor(imageData, start, end){
+      const [sr,sg,sb] = hexToRgbArr(start), [er,eg,eb] = hexToRgbArr(end);
+      const data=imageData.data;
+      for(let i=0;i<data.length;i+=4){
+        const g = (0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]) / 255;
+        data[i]= Math.round(sr + (er-sr)*g);
+        data[i+1]= Math.round(sg + (eg-sg)*g);
+        data[i+2]= Math.round(sb + (eb-sb)*g);
+      }
+    }
+
+    function effectStipplingStep(imageData, step){
+      const w=imageData.width,h=imageData.height,data=imageData.data;
+      for(let y=0;y<h;y+=step){
+        for(let x=0;x<w;x+=step){
+          const idx=(y*w+x)*4;
+          const g=(data[idx]+data[idx+1]+data[idx+2])/3;
+          const r=(1 - g/255)*(step*0.9);
+          if(r>0.6){
+            const rad=Math.ceil(r);
+            for(let yy=-rad;yy<=rad;yy++) for(let xx=-rad;xx<=rad;xx++){
+              if(xx*xx+yy*yy <= r*r){
+                const px=clamp(x+xx,0,w-1), py=clamp(y+yy,0,h-1);
+                const i2=(py*w+px)*4; data[i2]=data[i2+1]=data[i2+2]=0;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    function effectDots(imageData, step){
+      const w=imageData.width,h=imageData.height,data=imageData.data;
+      for(let y=0;y<h;y+=step){
+        for(let x=0;x<w;x+=step){
+          const i=(y*w+x)*4;
+          const g=(data[i]+data[i+1]+data[i+2])/3;
+          const r=(1 - g/255) * (step*0.9);
+          const rI=Math.ceil(r);
+          for(let yy=-rI;yy<=rI;yy++) for(let xx=-rI;xx<=rI;xx++){
+            if(xx*xx + yy*yy <= r*r){
+              const px=clamp(x+xx,0,w-1), py=clamp(y+yy,0,h-1), idx=(py*w+px)*4;
+              data[idx] = data[idx]*0.2; data[idx+1] = data[idx+1]*0.2; data[idx+2] = data[idx+2]*0.2;
+            }
+          }
+        }
+      }
+    }
+
+    function effectPatterns(imageData, tile){
+      const w=imageData.width,h=imageData.height,data=imageData.data;
+      for(let y=0;y<h;y++){
+        for(let x=0;x<w;x++){
+          const i=(y*w+x)*4;
+          const tx=Math.floor(x/tile), ty=Math.floor(y/tile);
+          const v = ((tx+ty)&1)?0.92:0.68;
+          data[i]=Math.round(data[i]*v); data[i+1]=Math.round(data[i+1]*v); data[i+2]=Math.round(data[i+2]*v);
+        }
+      }
+    }
+
+    function effectBevel(imageData){
+      const w=imageData.width,h=imageData.height,data=imageData.data;
+      const copy = new Uint8ClampedArray(data);
+      for(let y=1;y<h-1;y++) for(let x=1;x<w-1;x++){
+        const idx=(y*w+x)*4;
+        const bTL=(copy[((y-1)*w+(x-1))*4] + copy[((y-1)*w+(x-1))*4+1] + copy[((y-1)*w+(x-1))*4+2]) / 3;
+        const bBR=(copy[((y+1)*w+(x+1))*4] + copy[((y+1)*w+(x+1))*4+1] + copy[((y+1)*w+(x+1))*4+2]) / 3;
+        const diff = clamp((bTL - bBR) + 128, 0, 255);
+        data[idx]=data[idx+1]=data[idx+2]=diff;
+      }
+    }
+
+    function effectScatter(imageData, amount, chance){
+      const w=imageData.width,h=imageData.height,data=imageData.data;
+      const copy = new Uint8ClampedArray(data);
+      for(let y=0;y<h;y++){
+        for(let x=0;x<w;x++){
+          if(Math.random() < chance){
+            const sx=clamp(x + Math.round((Math.random()*2-1)*amount),0,w-1);
+            const sy=clamp(y + Math.round((Math.random()*2-1)*amount),0,h-1);
+            const sidx=(sy*w+sx)*4, didx=(y*w+x)*4;
+            data[didx]=copy[sidx]; data[didx+1]=copy[sidx+1]; data[didx+2]=copy[sidx+2];
+          }
+        }
+      }
+    }
+
+    let caGrid = null;
+    function effectCellular(imageData, scale){
+      const w=imageData.width,h=imageData.height;
+      const gw = Math.max(24, Math.round(w/scale)), gh = Math.max(16, Math.round(h/scale));
+      if(!caGrid || caGrid.w !== gw || caGrid.h !== gh){
+        caGrid = { w: gw, h: gh, cells: new Uint8Array(gw*gh), tmp: new Uint8Array(gw*gh) };
+        for(let i=0;i<gw*gh;i++) caGrid.cells[i] = Math.random() < 0.33 ? 1 : 0;
+      }
+      const g = caGrid;
+      for(let y=0;y<g.h;y++){
+        for(let x=0;x<g.w;x++){
+          let n=0;
+          for(let oy=-1;oy<=1;oy++) for(let ox=-1;ox<=1;ox++){
+            if(ox===0 && oy===0) continue;
+            const nx=(x+ox+g.w)%g.w, ny=(y+oy+g.h)%g.h;
+            n += g.cells[ny*g.w + nx];
+          }
+          const cur = g.cells[y*g.w + x];
+          let next = cur;
+          if(cur===1 && (n<2 || n>3)) next = 0;
+          if(cur===0 && n===3) next = 1;
+          g.tmp[y*g.w + x] = next;
+        }
+      }
+      [g.cells,g.tmp] = [g.tmp,g.cells];
+      const blockW = Math.ceil(w/g.w), blockH = Math.ceil(h/g.h);
+      for(let gy=0;gy<g.h;gy++){
+        for(let gx=0;gx<g.w;gx++){
+          const alive = g.cells[gy*g.w + gx] ? 230 : 40;
+          for(let by=0;by<blockH;by++) for(let bx=0;bx<blockW;bx++){
+            const px = gx*blockW + bx, py = gy*blockH + by; if(px>=w||py>=h) continue;
+            const idx=(py*w+px)*4;
+            imageData.data[idx] = (imageData.data[idx]*0.25 + alive*0.75)|0;
+            imageData.data[idx+1] = (imageData.data[idx+1]*0.25 + alive*0.75)|0;
+            imageData.data[idx+2] = (imageData.data[idx+2]*0.25 + alive*0.75)|0;
+          }
+        }
+      }
+    }
+
+    function effectGradient(imageData, sHex, eHex){
+      const [sr,sg,sb] = hexToRgbArr(sHex), [er,eg,eb] = hexToRgbArr(eHex), data=imageData.data;
+      for(let i=0;i<data.length;i+=4){
+        const g = (0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]) / 255;
+        data[i] = Math.round(sr + (er-sr)*g);
+        data[i+1] = Math.round(sg + (eg-sg)*g);
+        data[i+2] = Math.round(sb + (eb-sb)*g);
+      }
+    }
+
+    function effectCRT(imageData, opacity){
+      const w=imageData.width,h=imageData.height,data=imageData.data;
+      for(let y=0;y<h;y+=2){
+        const mul = 1 - opacity;
+        for(let x=0;x<w;x++){
+          const i=(y*w+x)*4; data[i]=data[i]*mul; data[i+1]=data[i+1]*mul; data[i+2]=data[i+2]*mul;
+        }
+      }
+    }
+
+    function applyGamma(imageData, gamma, black, white){
+      const inv = 1 / gamma, range = Math.max(1, white - black), data=imageData.data;
+      for(let i=0;i<data.length;i+=4){
+        for(let c=0;c<3;c++){
+          let v = data[i+c];
+          v = clamp((v - black) / range * 255, 0, 255);
+          v = 255 * Math.pow(v/255, inv);
+          data[i+c] = v|0;
+        }
+      }
+    }
+
+    // --- recording functions (merged) ---
+    function startRecording() {
+        const canvasStream = canvas.captureStream(30);
+        mediaRecorder = new MediaRecorder(canvasStream, { mimeType: 'video/webm; codecs=vp9' });
+        recordedChunks = [];
+        mediaRecorder.ondataavailable = e => e.data.size > 0 && recordedChunks.push(e.data);
+        mediaRecorder.onstop = ()=> {
+            downloadButton.classList.remove('hidden');
+            downloadButton.onclick = downloadVideo;
+        };
+        mediaRecorder.start();
+        recordButton.disabled = true;
+        stopButton.disabled = false;
+        downloadButton.classList.add('hidden');
+    }
+
+    function stopRecording() {
+        if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+        recordButton.disabled = false;
+        stopButton.disabled = true;
+    }
+
+    function downloadVideo() {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `visual-effects-${new Date().toISOString()}.webm`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    // --- render static (for uploaded images) ---
+    function renderStatic(){
+      if(off.width===0||off.height===0) return;
+      let imageData;
+      try { imageData = offCtx.getImageData(0,0,off.width,off.height); } catch(e) { return; }
+      // index-style pipeline for static render
+      if(patternsToggle.checked) effectPatterns(imageData, Number(patterns_tile.value));
+      if(document.getElementById('gradients') && document.getElementById('gradients').checked) effectGradient(imageData, colorStart.value, colorEnd.value);
+      if(recolorEnable.checked) effectRecolor(imageData, colorStart.value, colorEnd.value);
+      if(ditherEnable.checked) effectDither(imageData, Math.max(2, Number(ditherLevels.value)));
+      if(stipplingToggle.checked) effectStipplingStep(imageData, Math.max(2, Number(stippling_step.value)));
+      if(dotsToggle.checked) effectDots(imageData, Math.max(3, Number(dots_size.value)));
+      if(bevelToggle.checked) effectBevel(imageData);
+      if(edgeEnable.checked) effectEdge(imageData, Number(edgeThreshold.value));
+      if(scatterToggle.checked) effectScatter(imageData, Number(scatter_amount.value), Number(scatter_chance.value));
+      if(cellularToggle.checked) effectCellular(imageData, Math.max(8, Number(cellular_scale.value)));
+
+      applyGamma(imageData, Number(gammaIn.value), Number(blackIn.value), Number(whiteIn.value));
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    // --- main loop (combines hjkl mainLoop + index) ---
+    let lastTime = performance.now();
+    function loop(now){
+      // fps / perf mode behavior could be added; keep simple
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+      time += dt;
+
+      // draw current frame to offscreen first
+      if(video && (video.srcObject || video.src) && video.readyState >= 2){
+        // match canvas dimensions
+        if(canvas.width !== video.videoWidth || canvas.height !== video.videoHeight){
+          setSize(video.videoWidth || canvas.width, video.videoHeight || canvas.height);
+        }
+        offCtx.drawImage(video, 0, 0, off.width, off.height);
+      } else {
+        // if nothing, just clear
+        offCtx.fillStyle = '#000'; offCtx.fillRect(0,0,off.width,off.height);
+      }
+
+      // get image data
+      let imageData;
+      try { imageData = offCtx.getImageData(0,0,off.width,off.height); } catch(e) { requestAnimationFrame(loop); return; }
+
+      // Apply effects in a reasonable order (composed from both files)
+      // 1) Patterns / gradients / recolor / dithers / stippling / dots / patterns
+      if(patternsToggle.checked) effectPatterns(imageData, Number(patterns_tile.value));
+      if(recolorEnable.checked && recolorMix.value > 0) applyRecolor(imageData); // keep hjkl recolor for mix effect
+      if(ditherEnable.checked) {
+        if(ditherAlgorithm.value === 'bayer') applyBayerDither(imageData); else applyFloydSteinbergDither(imageData);
+      }
+      if(stipplingToggle.checked) effectStipplingStep(imageData, Math.max(2, Number(stippling_step.value)));
+      if(dotsToggle.checked) effectDots(imageData, Math.max(3, Number(dots_size.value)));
+      if(bevelToggle.checked) effectBevel(imageData);
+      if(edgeEnable.checked) {
+        // prefer index edge for speed/consistency
+        effectEdge(imageData, Number(edgeThreshold.value));
+      }
+      if(scatterToggle.checked) effectScatter(imageData, Number(scatter_amount.value), Number(scatter_chance.value));
+      if(cellularToggle.checked) effectCellular(imageData, Math.max(8, Number(cellular_scale.value)));
+
+      // Distort: use index-style for parameterization
+      if(distortEnable.checked) effectDistort(imageData, time, Number(distortAmount.value), Number(distortFreq.value));
+
+      // Recolor/Gradient/CRT from index/hjkl
+      if(document.getElementById('gradients') && document.getElementById('gradients').checked) effectGradient(imageData, colorStart.value, colorEnd.value);
+      if(crtEnable.checked) effectCRT(imageData, parseFloat(scanlineOpacity.value));
+
+      // Apply gamma/levels last
+      applyGamma(imageData, Number(gammaIn.value), Number(blackIn.value), Number(whiteIn.value));
+
+      // Put to visible canvas
+      ctx.putImageData(imageData, 0, 0);
+
+      animationFrameId = requestAnimationFrame(loop);
+    }
+
+    // --- Start / Stop handlers ---
+    startButton.addEventListener('click', setupCamera);
+    recordButton.addEventListener('click', startRecording);
+    stopButton.addEventListener('click', stopRecording);
+    downloadButton.addEventListener('click', downloadVideo);
+
+    // Stop webcam (if needed)
+    function stopStream(){
+      try{
+        const s = video.srcObject;
+        if(s && s.getTracks) s.getTracks().forEach(t=>t.stop());
+        video.srcObject = null;
+      }catch(e){}
+    }
+
+    // Initialize: render a placeholder static image so canvas isn't blank
+    (function initSample(){
+      const w = off.width || canvas.width || 640;
+      const h = off.height || canvas.height || Math.round(w*3/4);
+      setSize(w,h);
+      const g = offCtx.createLinearGradient(0,0,w,h);
+      g.addColorStop(0,'#0b2540'); g.addColorStop(0.5,'#6b1f1f'); g.addColorStop(1,'#ffb86b');
+      offCtx.fillStyle = g; offCtx.fillRect(0,0,w,h);
+      ctx.drawImage(off,0,0);
+    })();
+
+    // Upload sample selection / sw fallback (not populating samples UI for brevity)
+
+    // Small safety: stop animation on page unload
+    window.addEventListener('beforeunload', ()=> {
+      if(animationFrameId) cancelAnimationFrame(animationFrameId);
+      stopStream();
+    });
+    </script>
+</body>
+</html>
